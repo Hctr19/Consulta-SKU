@@ -55,12 +55,14 @@ def construir_query(db_schema, sku=None, months=12, start_date=None, end_date=No
     SELECT 
         TRIM(d.clave) AS sku,
         c.fecha AS fecha,
-        d.cantidad AS cantidad,
-        'compra' AS tipo,
-        'Compra Directa' AS concepto
+        'ENTRADA' AS tipo,
+        'Compra Directa' AS concepto,
+        COALESCE(p.nombre, 'PROVEEDOR DESCONOCIDO') AS detalle,
+        d.cantidad AS cantidad
     FROM `{db_schema}`.compra c
     INNER JOIN `{db_schema}`.detallec d ON c.com_id = d.com_id
     INNER JOIN `{db_schema}`.articulo art ON d.art_id = art.art_id
+    LEFT JOIN `{db_schema}`.proveedor p ON c.pro_id = p.pro_id
     WHERE c.status = 1 
       AND art.status = 1
       AND c.fecha {date_filter}
@@ -72,9 +74,10 @@ def construir_query(db_schema, sku=None, months=12, start_date=None, end_date=No
     SELECT 
         TRIM(art.clave) AS sku,
         aj.fecha AS fecha,
-        aja.diferencia AS cantidad,
-        'compra' AS tipo,
-        'Ajuste Positivo' AS concepto
+        'ENTRADA' AS tipo,
+        'Ajuste Positivo' AS concepto,
+        COALESCE(aj.comentario, 'Ajuste de Stock') AS detalle,
+        aja.diferencia AS cantidad
     FROM `{db_schema}`.ajusteinventario aj
     INNER JOIN `{db_schema}`.ajusteinventarioarticulo aja ON aj.ain_id = aja.ain_id
     INNER JOIN `{db_schema}`.articulo art ON aja.art_id = art.art_id
@@ -89,12 +92,16 @@ def construir_query(db_schema, sku=None, months=12, start_date=None, end_date=No
     SELECT 
         TRIM(dn.clave) AS sku,
         nc.fecha AS fecha,
-        dn.cantidad AS cantidad,
-        'compra' AS tipo,
-        'Devolución Cliente' AS concepto
+        'ENTRADA' AS tipo,
+        'Devolución Cliente' AS concepto,
+        COALESCE(cli.nombre, 'CLIENTE DESCONOCIDO') AS detalle,
+        dn.cantidad AS cantidad
     FROM `{db_schema}`.notacredito nc
     INNER JOIN `{db_schema}`.detallen dn ON nc.ncr_id = dn.ncr_id
     INNER JOIN `{db_schema}`.articulo art ON dn.art_id = art.art_id
+    LEFT JOIN `{db_schema}`.ticket t ON nc.tic_id = t.tic_id
+    LEFT JOIN `{db_schema}`.nota n ON nc.not_id = n.not_id
+    LEFT JOIN `{db_schema}`.cliente cli ON (t.cli_id = cli.cli_id OR n.cli_id = cli.cli_id)
     WHERE nc.status = 1 
       AND art.status = 1
       AND nc.fecha {date_filter}
@@ -106,17 +113,19 @@ def construir_query(db_schema, sku=None, months=12, start_date=None, end_date=No
     SELECT 
         TRIM(dv.clave) AS sku,
         v.fecha AS fecha,
-        dv.cantidad AS cantidad,
-        'venta' AS tipo,
+        'SALIDA' AS tipo,
         CASE 
             WHEN v.tic_id IS NOT NULL THEN 'Venta (Ticket)'
             ELSE 'Venta (Nota)'
-        END AS concepto
+        END AS concepto,
+        COALESCE(cli.nombre, 'CLIENTE DESCONOCIDO') AS detalle,
+        dv.cantidad AS cantidad
     FROM `{db_schema}`.venta v
     INNER JOIN `{db_schema}`.detallev dv ON v.ven_id = dv.ven_id
     INNER JOIN `{db_schema}`.articulo art ON dv.art_id = art.art_id
     LEFT JOIN `{db_schema}`.ticket t ON v.tic_id = t.tic_id
     LEFT JOIN `{db_schema}`.nota n ON v.not_id = n.not_id
+    LEFT JOIN `{db_schema}`.cliente cli ON (t.cli_id = cli.cli_id OR n.cli_id = cli.cli_id)
     WHERE v.status = 1 
       AND art.status = 1
       AND (t.tic_id IS NOT NULL OR n.not_id IS NOT NULL)
@@ -129,9 +138,10 @@ def construir_query(db_schema, sku=None, months=12, start_date=None, end_date=No
     SELECT 
         TRIM(art.clave) AS sku,
         aj.fecha AS fecha,
-        ABS(aja.diferencia) AS cantidad,
-        'venta' AS tipo,
-        'Ajuste Negativo (Merma)' AS concepto
+        'SALIDA' AS tipo,
+        'Ajuste Negativo (Merma)' AS concepto,
+        COALESCE(aj.comentario, 'Ajuste de Stock') AS detalle,
+        ABS(aja.diferencia) AS cantidad
     FROM `{db_schema}`.ajusteinventario aj
     INNER JOIN `{db_schema}`.ajusteinventarioarticulo aja ON aj.ain_id = aja.ain_id
     INNER JOIN `{db_schema}`.articulo art ON aja.art_id = art.art_id
@@ -145,16 +155,17 @@ def construir_query(db_schema, sku=None, months=12, start_date=None, end_date=No
     -- 6. Traspasos Salientes (Salida)
     SELECT 
         TRIM(dt.clave) AS sku,
-        t.fechaApl AS fecha,
-        dt.cantidad AS cantidad,
-        'venta' AS tipo,
-        'Traspaso Saliente' AS concepto
+        COALESCE(t.fechaApl, t.fecha) AS fecha,
+        'SALIDA' AS tipo,
+        'Traspaso Saliente' AS concepto,
+        CONCAT('Hacia: ', COALESCE(t.aliasDes, 'DESTINO DESCONOCIDO')) AS detalle,
+        dt.cantidad AS cantidad
     FROM `{db_schema}`.traspaso t
     INNER JOIN `{db_schema}`.detallet dt ON t.tra_id = dt.tra_id
     INNER JOIN `{db_schema}`.articulo art ON dt.art_id = art.art_id
-    WHERE t.fechaApl IS NOT NULL 
+    WHERE t.fechaCan IS NULL 
       AND art.status = 1
-      AND t.fechaApl {date_filter}
+      AND COALESCE(t.fechaApl, t.fecha) {date_filter}
       {sku_filter_dt}
     """
     return query

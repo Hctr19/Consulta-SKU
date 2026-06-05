@@ -126,10 +126,12 @@ def obtener_historial_completo_sku(sku, inicio, fin):
         c.fecha AS fecha,
         'ENTRADA' AS TIPO,
         'Compra Directa' AS CONCEPTO,
+        COALESCE(p.nombre, 'PROVEEDOR DESCONOCIDO') AS DETALLE,
         d.cantidad AS cantidad
     FROM {{db}}.compra c
     INNER JOIN {{db}}.detallec d ON c.com_id = d.com_id
     INNER JOIN {{db}}.articulo art ON d.art_id = art.art_id
+    LEFT JOIN {{db}}.proveedor p ON c.pro_id = p.pro_id
     WHERE c.status = 1 
       AND art.status = 1
       AND TRIM(d.clave) = '{sku}'
@@ -142,6 +144,7 @@ def obtener_historial_completo_sku(sku, inicio, fin):
         aj.fecha AS fecha,
         'ENTRADA' AS TIPO,
         'Ajuste Positivo' AS CONCEPTO,
+        COALESCE(aj.comentario, 'Ajuste de Stock') AS DETALLE,
         aja.diferencia AS cantidad
     FROM {{db}}.ajusteinventario aj
     INNER JOIN {{db}}.ajusteinventarioarticulo aja ON aj.ain_id = aja.ain_id
@@ -158,10 +161,14 @@ def obtener_historial_completo_sku(sku, inicio, fin):
         nc.fecha AS fecha,
         'ENTRADA' AS TIPO,
         'Devolución Cliente' AS CONCEPTO,
+        COALESCE(cli.nombre, 'CLIENTE DESCONOCIDO') AS DETALLE,
         dn.cantidad AS cantidad
     FROM {{db}}.notacredito nc
     INNER JOIN {{db}}.detallen dn ON nc.ncr_id = dn.ncr_id
     INNER JOIN {{db}}.articulo art ON dn.art_id = art.art_id
+    LEFT JOIN {{db}}.ticket t ON nc.tic_id = t.tic_id
+    LEFT JOIN {{db}}.nota n ON nc.not_id = n.not_id
+    LEFT JOIN {{db}}.cliente cli ON (t.cli_id = cli.cli_id OR n.cli_id = cli.cli_id)
     WHERE nc.status = 1 
       AND art.status = 1
       AND TRIM(dn.clave) = '{sku}'
@@ -177,12 +184,14 @@ def obtener_historial_completo_sku(sku, inicio, fin):
             WHEN v.tic_id IS NOT NULL THEN 'Venta (Ticket)'
             ELSE 'Venta (Nota)'
         END AS CONCEPTO,
+        COALESCE(cli.nombre, 'CLIENTE DESCONOCIDO') AS DETALLE,
         dv.cantidad AS cantidad
     FROM {{db}}.venta v
     INNER JOIN {{db}}.detallev dv ON v.ven_id = dv.ven_id
     INNER JOIN {{db}}.articulo art ON dv.art_id = art.art_id
     LEFT JOIN {{db}}.ticket t ON v.tic_id = t.tic_id
     LEFT JOIN {{db}}.nota n ON v.not_id = n.not_id
+    LEFT JOIN {{db}}.cliente cli ON (t.cli_id = cli.cli_id OR n.cli_id = cli.cli_id)
     WHERE v.status = 1 
       AND art.status = 1
       AND (t.tic_id IS NOT NULL OR n.not_id IS NOT NULL)
@@ -196,6 +205,7 @@ def obtener_historial_completo_sku(sku, inicio, fin):
         aj.fecha AS fecha,
         'SALIDA' AS TIPO,
         'Ajuste Negativo (Merma)' AS CONCEPTO,
+        COALESCE(aj.comentario, 'Ajuste de Stock') AS DETALLE,
         ABS(aja.diferencia) AS cantidad
     FROM {{db}}.ajusteinventario aj
     INNER JOIN {{db}}.ajusteinventarioarticulo aja ON aj.ain_id = aja.ain_id
@@ -209,17 +219,18 @@ def obtener_historial_completo_sku(sku, inicio, fin):
 
     -- 6. Traspasos Salientes (Salida)
     SELECT 
-        t.fechaApl AS fecha,
+        COALESCE(t.fechaApl, t.fecha) AS fecha,
         'SALIDA' AS TIPO,
         'Traspaso Saliente' AS CONCEPTO,
+        CONCAT('Hacia: ', COALESCE(t.aliasDes, 'DESTINO DESCONOCIDO')) AS DETALLE,
         dt.cantidad AS cantidad
     FROM {{db}}.traspaso t
     INNER JOIN {{db}}.detallet dt ON t.tra_id = dt.tra_id
     INNER JOIN {{db}}.articulo art ON dt.art_id = art.art_id
-    WHERE t.fechaApl IS NOT NULL 
+    WHERE t.fechaCan IS NULL 
       AND art.status = 1
       AND TRIM(dt.clave) = '{sku}'
-      AND t.fechaApl BETWEEN '{inicio}' AND '{fin}'
+      AND COALESCE(t.fechaApl, t.fecha) BETWEEN '{inicio}' AND '{fin}'
     """
     return ejecutar_consulta(q).sort_values("fecha", ascending=False)
 
