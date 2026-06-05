@@ -1,0 +1,22 @@
+# Credentials & Secrets
+.streamlit/
+secrets.toml
+*.toml
+.env
+*.env
+
+# Python Environment
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+env/
+venv/
+ENV/
+
+# OS/IDE metadata
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
