@@ -33,7 +33,7 @@ def get_engine(db_choice, secrets):
         raise ValueError(f"Faltan credenciales en secrets.toml para el prefijo: {prefix}")
     return create_engine(f"mysql+mysqlconnector://{user}:{password}@{host}/sicar", pool_pre_ping=True)
 
-def construir_query(db_schema, sku=None, exclude_pattern=None, months=12, start_date=None, end_date=None):
+def construir_query(db_schema, sku=None, months=12, start_date=None, end_date=None):
     """
     Construye la consulta SQL consolidada (UNION ALL) de 6 orígenes de movimientos.
     """
@@ -50,9 +50,6 @@ def construir_query(db_schema, sku=None, exclude_pattern=None, months=12, start_
     sku_filter_dv = f"AND TRIM(dv.clave) = '{sku}'" if sku else ""
     sku_filter_dt = f"AND TRIM(dt.clave) = '{sku}'" if sku else ""
 
-    # Filtro de Exclusión de claves
-    exclude_filter = f"AND art.clave NOT LIKE '%{exclude_pattern}%'" if exclude_pattern else ""
-
     query = f"""
     -- 1. Compras Directas (Entrada)
     SELECT 
@@ -68,7 +65,6 @@ def construir_query(db_schema, sku=None, exclude_pattern=None, months=12, start_
       AND art.status = 1
       AND c.fecha {date_filter}
       {sku_filter_dc}
-      {exclude_filter}
 
     UNION ALL
 
@@ -86,7 +82,6 @@ def construir_query(db_schema, sku=None, exclude_pattern=None, months=12, start_
       AND art.status = 1
       AND aj.fecha {date_filter}
       {sku_filter_aja}
-      {exclude_filter}
 
     UNION ALL
 
@@ -104,7 +99,6 @@ def construir_query(db_schema, sku=None, exclude_pattern=None, months=12, start_
       AND art.status = 1
       AND nc.fecha {date_filter}
       {sku_filter_dn}
-      {exclude_filter}
 
     UNION ALL
 
@@ -128,7 +122,6 @@ def construir_query(db_schema, sku=None, exclude_pattern=None, months=12, start_
       AND (t.tic_id IS NOT NULL OR n.not_id IS NOT NULL)
       AND v.fecha {date_filter}
       {sku_filter_dv}
-      {exclude_filter}
 
     UNION ALL
 
@@ -146,7 +139,6 @@ def construir_query(db_schema, sku=None, exclude_pattern=None, months=12, start_
       AND art.status = 1
       AND aj.fecha {date_filter}
       {sku_filter_aja}
-      {exclude_filter}
 
     UNION ALL
 
@@ -164,7 +156,6 @@ def construir_query(db_schema, sku=None, exclude_pattern=None, months=12, start_
       AND art.status = 1
       AND t.fechaApl {date_filter}
       {sku_filter_dt}
-      {exclude_filter}
     """
     return query
 
@@ -172,7 +163,6 @@ def main():
     parser = argparse.ArgumentParser(description="Consulta consolidada de movimientos de inventario SICAR ERP.")
     parser.add_argument("--db", default="arizone", choices=["arizone", "josivna"], help="Base de datos a consultar.")
     parser.add_argument("--sku", default=None, help="SKU específico a consultar.")
-    parser.add_argument("--exclude", default="JOSI", help="Patrón de exclusión de clave de artículo.")
     parser.add_argument("--months", type=int, default=12, help="Rango de meses para el reporte.")
     parser.add_argument("--output", default=None, help="Guardar el resultado en formato CSV con la ruta especificada.")
 
@@ -199,7 +189,6 @@ def main():
     query = construir_query(
         db_schema=db_schema,
         sku=args.sku,
-        exclude_pattern=args.exclude,
         months=args.months
     )
 

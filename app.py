@@ -59,7 +59,6 @@ with st.sidebar:
     fin_dt    = col2.date_input("Hasta", datetime.now())
     inicio = f"{inicio_dt} 00:00:00"
     fin    = f"{fin_dt} 23:59:59"
-    excluir_sku = st.text_input("Excluir SKU (patrón):", value="JOSI").upper().strip()
     cliente_sel = st.selectbox("Selecciona Cliente:", lista_clientes) if modo != "Historial por SKU" else None
 
 if not engine:
@@ -120,9 +119,7 @@ def obtener_devoluciones(cliente=None):
         q += f" AND c.nombre = '{cliente}'"
     return ejecutar_consulta(q).sort_values("fecha", ascending=False)
 
-def obtener_historial_completo_sku(sku, inicio, fin, excluir=None):
-    exclude_cond = f"AND art.clave NOT LIKE '%{excluir}%'" if excluir else ""
-    
+def obtener_historial_completo_sku(sku, inicio, fin):
     q = f"""
     -- 1. Compras Directas (Entrada)
     SELECT 
@@ -137,7 +134,6 @@ def obtener_historial_completo_sku(sku, inicio, fin, excluir=None):
       AND art.status = 1
       AND TRIM(d.clave) = '{sku}'
       AND c.fecha BETWEEN '{inicio}' AND '{fin}'
-      {exclude_cond}
 
     UNION ALL
 
@@ -154,7 +150,6 @@ def obtener_historial_completo_sku(sku, inicio, fin, excluir=None):
       AND art.status = 1
       AND TRIM(art.clave) = '{sku}'
       AND aj.fecha BETWEEN '{inicio}' AND '{fin}'
-      {exclude_cond}
 
     UNION ALL
 
@@ -171,7 +166,6 @@ def obtener_historial_completo_sku(sku, inicio, fin, excluir=None):
       AND art.status = 1
       AND TRIM(dn.clave) = '{sku}'
       AND nc.fecha BETWEEN '{inicio}' AND '{fin}'
-      {exclude_cond}
 
     UNION ALL
 
@@ -187,14 +181,13 @@ def obtener_historial_completo_sku(sku, inicio, fin, excluir=None):
     FROM {{db}}.venta v
     INNER JOIN {{db}}.detallev dv ON v.ven_id = dv.ven_id
     INNER JOIN {{db}}.articulo art ON dv.art_id = art.art_id
-    LEFT JOIN {db}.ticket t ON v.tic_id = t.tic_id
-    LEFT JOIN {db}.nota n ON v.not_id = n.not_id
+    LEFT JOIN {{db}}.ticket t ON v.tic_id = t.tic_id
+    LEFT JOIN {{db}}.nota n ON v.not_id = n.not_id
     WHERE v.status = 1 
       AND art.status = 1
       AND (t.tic_id IS NOT NULL OR n.not_id IS NOT NULL)
       AND TRIM(dv.clave) = '{sku}'
       AND v.fecha BETWEEN '{inicio}' AND '{fin}'
-      {exclude_cond}
 
     UNION ALL
 
@@ -211,7 +204,6 @@ def obtener_historial_completo_sku(sku, inicio, fin, excluir=None):
       AND art.status = 1
       AND TRIM(art.clave) = '{sku}'
       AND aj.fecha BETWEEN '{inicio}' AND '{fin}'
-      {exclude_cond}
 
     UNION ALL
 
@@ -228,7 +220,6 @@ def obtener_historial_completo_sku(sku, inicio, fin, excluir=None):
       AND art.status = 1
       AND TRIM(dt.clave) = '{sku}'
       AND t.fechaApl BETWEEN '{inicio}' AND '{fin}'
-      {exclude_cond}
     """
     return ejecutar_consulta(q).sort_values("fecha", ascending=False)
 
@@ -241,8 +232,7 @@ if modo == "Historial por SKU":
         df_historial = obtener_historial_completo_sku(
             sku=sku_input,
             inicio=inicio,
-            fin=fin,
-            excluir=excluir_sku
+            fin=fin
         )
 
         if not df_historial.empty:
