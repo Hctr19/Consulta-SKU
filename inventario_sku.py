@@ -203,10 +203,23 @@ def main():
         months=args.months
     )
 
-    # Agregar ordenamiento global
-    final_query = f"{query} ORDER BY fecha ASC"
+    # Agregar ordenamiento global (descendente para procesar la reconstrucción)
+    final_query = f"{query} ORDER BY fecha DESC"
 
     try:
+        current_stock = 0.0
+        if args.sku:
+            try:
+                with engine.connect() as conn:
+                    df_stock = pd.read_sql(
+                        text(f"SELECT existencia FROM `{db_schema}`.articulo WHERE TRIM(clave) = '{args.sku}' AND status = 1"),
+                        conn
+                    )
+                current_stock = float(df_stock.iloc[0]["existencia"]) if not df_stock.empty else 0.0
+                print(f"Existencia actual en base de datos: {current_stock}")
+            except Exception as e:
+                print(f"Advertencia: No se pudo obtener la existencia actual para la reconstrucción: {e}")
+
         with engine.connect() as conn:
             df = pd.read_sql(text(final_query), conn)
 
@@ -214,8 +227,34 @@ def main():
             print("No se encontraron movimientos para los filtros indicados.")
             return
 
+        if args.sku:
+            # Reconstrucción de stock
+            stock_after = []
+            stock_before = []
+            running_stock = current_stock
+
+            for idx, row in df.iterrows():
+                qty = float(row['cantidad'])
+                tipo = row['tipo']
+
+                sa = running_stock
+                if tipo.upper() == 'ENTRADA':
+                    sb = sa - qty
+                else:  # SALIDA
+                    sb = sa + qty
+
+                stock_after.append(sa)
+                stock_before.append(sb)
+                running_stock = sb
+
+            df['Stock Previo'] = stock_before
+            df['Stock Resultante'] = stock_after
+            
+            # Volver a ordenar cronológicamente de forma ascendente para mostrarlo al usuario
+            df = df.sort_values("fecha", ascending=True)
+
         print(f"\nSe encontraron {len(df)} registros de movimientos:")
-        print(df.to_string(index=False, max_rows=30))
+        print(df.to_string(index=False, max_rows=50))
 
         if args.output:
             df.to_csv(args.output, index=False, encoding="utf-8-sig")

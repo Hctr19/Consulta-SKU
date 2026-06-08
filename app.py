@@ -120,6 +120,11 @@ def obtener_devoluciones(cliente=None):
     return ejecutar_consulta(q).sort_values("fecha", ascending=False)
 
 def obtener_historial_completo_sku(sku, inicio, fin):
+    # 1. Obtener la existencia actual
+    df_stock = ejecutar_consulta(f"SELECT existencia FROM {{db}}.articulo WHERE TRIM(clave) = '{sku}' AND status = 1")
+    current_stock = float(df_stock.iloc[0]["existencia"]) if not df_stock.empty else 0.0
+
+    # 2. Consultar todos los movimientos
     q = f"""
     -- 1. Compras Directas (Entrada)
     SELECT 
@@ -135,7 +140,6 @@ def obtener_historial_completo_sku(sku, inicio, fin):
     WHERE c.status = 1 
       AND art.status = 1
       AND TRIM(d.clave) = '{sku}'
-      AND c.fecha BETWEEN '{inicio}' AND '{fin}'
 
     UNION ALL
 
@@ -152,7 +156,6 @@ def obtener_historial_completo_sku(sku, inicio, fin):
     WHERE aja.diferencia > 0 
       AND art.status = 1
       AND TRIM(art.clave) = '{sku}'
-      AND aj.fecha BETWEEN '{inicio}' AND '{fin}'
 
     UNION ALL
 
@@ -172,7 +175,6 @@ def obtener_historial_completo_sku(sku, inicio, fin):
     WHERE nc.status = 1 
       AND art.status = 1
       AND TRIM(dn.clave) = '{sku}'
-      AND nc.fecha BETWEEN '{inicio}' AND '{fin}'
 
     UNION ALL
 
@@ -196,7 +198,6 @@ def obtener_historial_completo_sku(sku, inicio, fin):
       AND art.status = 1
       AND (t.tic_id IS NOT NULL OR n.not_id IS NOT NULL)
       AND TRIM(dv.clave) = '{sku}'
-      AND v.fecha BETWEEN '{inicio}' AND '{fin}'
 
     UNION ALL
 
@@ -213,7 +214,6 @@ def obtener_historial_completo_sku(sku, inicio, fin):
     WHERE aja.diferencia < 0 
       AND art.status = 1
       AND TRIM(art.clave) = '{sku}'
-      AND aj.fecha BETWEEN '{inicio}' AND '{fin}'
 
     UNION ALL
 
@@ -230,9 +230,45 @@ def obtener_historial_completo_sku(sku, inicio, fin):
     WHERE t.fechaCan IS NULL 
       AND art.status = 1
       AND TRIM(dt.clave) = '{sku}'
-      AND COALESCE(t.fechaApl, t.fecha) BETWEEN '{inicio}' AND '{fin}'
     """
-    return ejecutar_consulta(q).sort_values("fecha", ascending=False)
+    
+    df = ejecutar_consulta(q)
+    if df.empty:
+        return df
+
+    # Ordenar por fecha de forma descendente (del más nuevo al más antiguo)
+    df = df.sort_values("fecha", ascending=False).reset_index(drop=True)
+
+    # Calcular histórico de inventario
+    stock_after = []
+    stock_before = []
+    running_stock = current_stock
+
+    for idx, row in df.iterrows():
+        qty = float(row['cantidad'])
+        tipo = row['TIPO']
+
+        sa = running_stock
+        if tipo == 'ENTRADA':
+            sb = sa - qty
+        else: # SALIDA
+            sb = sa + qty
+
+        stock_after.append(sa)
+        stock_before.append(sb)
+        running_stock = sb
+
+    df['Stock Previo'] = stock_before
+    df['Stock Resultante'] = stock_after
+
+    # Filtrar por rango de fechas
+    df['fecha_dt'] = pd.to_datetime(df['fecha'])
+    inicio_dt = pd.to_datetime(inicio)
+    fin_dt = pd.to_datetime(fin)
+    df_filtered = df[(df['fecha_dt'] >= inicio_dt) & (df['fecha_dt'] <= fin_dt)].copy()
+    df_filtered = df_filtered.drop(columns=['fecha_dt'])
+
+    return df_filtered.sort_values("fecha", ascending=False)
 
 # --- PANTALLAS ---
 
