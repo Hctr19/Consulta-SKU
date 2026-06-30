@@ -12,7 +12,8 @@ def get_engine(db_choice):
         user = st.secrets[f"{prefix}_user"]
         password = st.secrets[f"{prefix}_password"]
         host = st.secrets[f"{prefix}_host"]
-        return create_engine(f"mysql+mysqlconnector://{user}:{password}@{host}/", pool_pre_ping=True)
+        port = st.secrets.get(f"{prefix}_port", 3306)
+        return create_engine(f"mysql+mysqlconnector://{user}:{password}@{host}:{port}/", pool_pre_ping=True)
     except Exception as e:
         st.error(f"Error conexión: {e}")
         return None

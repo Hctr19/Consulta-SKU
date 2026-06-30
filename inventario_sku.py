@@ -29,9 +29,10 @@ def get_engine(db_choice, secrets):
     user = secrets.get(f"{prefix}_user")
     password = secrets.get(f"{prefix}_password")
     host = secrets.get(f"{prefix}_host")
+    port = secrets.get(f"{prefix}_port", 3306)
     if not all([user, password, host]):
         raise ValueError(f"Faltan credenciales en secrets.toml para el prefijo: {prefix}")
-    return create_engine(f"mysql+mysqlconnector://{user}:{password}@{host}/sicar", pool_pre_ping=True)
+    return create_engine(f"mysql+mysqlconnector://{user}:{password}@{host}:{port}/sicar", pool_pre_ping=True)
 
 def construir_query(db_schema, sku=None, months=12, start_date=None, end_date=None):
     """
