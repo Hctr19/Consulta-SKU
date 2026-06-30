@@ -39,6 +39,7 @@ def ejecutar_consulta(query_template):
         final_query = query_template.replace("{db}", esquema)
         return pd.read_sql(final_query, engine)
     except Exception as e:
+        st.sidebar.error(f"Error SQL: {e}")
         return pd.DataFrame()
 
 @st.cache_data(ttl=300)
