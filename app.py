@@ -20,7 +20,7 @@ def get_engine(db_choice):
 
 db_seleccionada = st.sidebar.selectbox("Base de Datos:", ["Database Arizone", "Database Josivna"])
 engine = get_engine(db_seleccionada)
-
+@st.cache_data(ttl=600)
 
 def descubrir_esquema(db_choice):
     for schema in ["sicar", "SICAR"]:
@@ -41,7 +41,7 @@ def ejecutar_consulta(query_template):
     except Exception as e:
         st.sidebar.error(f"Error SQL: {e}")
         return pd.DataFrame()
-
+@st.cache_data(ttl=300)
 
 def cargar_clientes(db_choice, esquema_act):
     df = ejecutar_consulta("SELECT nombre FROM {db}.cliente WHERE status = 1 ORDER BY nombre ASC")
